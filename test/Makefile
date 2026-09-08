@@ -29,12 +29,12 @@
 ##*****************************************************************************************/
 
 
-EXE=		fmi_test smem2_test bwt_seed_strategy_test sa2ref_test xeonbsw
+EXE=		fmi_test smem2_test bwt_seed_strategy_test sa2ref_test xeonbsw nm_md_test
 CXX=		icpc
 CXXFLAGS=	-std=c++11 -fopenmp -mtune=native -march=native
 CPPFLAGS=	-DENABLE_PREFETCH
 INCLUDES=	-I../src
-LIBS=		-L.. -fopenmp -lz -lbwa ../ext/safestringlib/libsafestring.a
+LIBS=		-L.. -fopenmp -lbwa ../ext/safestringlib/libsafestring.a -lz -lpthread
 
 .PHONY:all clean depend
 .SUFFIXES:.cpp .o
@@ -45,6 +45,9 @@ LIBS=		-L.. -fopenmp -lz -lbwa ../ext/safestringlib/libsafestring.a
 all:$(EXE)
 
 fmi_test:fmi_test.o
+	$(CXX) -o $@ $^ $(LIBS)
+
+nm_md_test: nm_md_test.o
 	$(CXX) -o $@ $^ $(LIBS)
 
 smem2_test: smem2_test.o
@@ -74,3 +77,5 @@ sa2ref_test.o: ../src/FMI_search.h ../src/bntseq.h ../src/read_index_ele.h
 sa2ref_test.o: ../src/bwa.h ../src/bwt.h ../src/utils.h ../src/macro.h
 smem2_test.o: ../src/FMI_search.h ../src/bntseq.h ../src/read_index_ele.h
 smem2_test.o: ../src/bwa.h ../src/bwt.h ../src/utils.h ../src/macro.h
+
+nm_md_test.o: ../src/bwa.h ../src/bntseq.h

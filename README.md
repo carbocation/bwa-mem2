@@ -130,6 +130,10 @@ numactl -m 0 -C 0-27,56-83 ./bwa-mem2 mem -t 56 human_g1k_v37.fasta SRR7733443_1
 <img src="https://github.com/bwa-mem2/bwa-mem2/blob/master/images/bwa-mem2-4.png" height="400"/a></br>
 </p> 
 
+## Regression tests
+
+See [the synthetic NM/MD regression tests](test/README.md) for build and test commands.
+
 ## bwa-mem2 seeding phase accelerated using LISA (Learned-Indexes for Sequence Analysis)
 
 bwa-mem2-lisa is an accelerated version of bwa-mem2 where we apply learned-indexes to the seeding phase. bwa-mem2-lisa branch contains the source code of the implementation. Following are the features of bwa-mem2-lisa:

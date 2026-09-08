@@ -32,6 +32,7 @@ Authors: Vasimuddin Md <vasimuddin.md@intel.com>; Sanchit Misra <sanchit.misra@i
 #include <stdio.h>
 #include <zlib.h>
 #include <assert.h>
+#include <ctype.h>
 #include "bntseq.h"
 #include "bwa.h"
 #include "ksw.h"
@@ -256,13 +257,37 @@ void bwa_fill_scmat(int a, int b, int8_t mat[25])
     for (j = 0; j < 5; ++j) mat[k++] = -1;   // DEFAULT AMBIG
 }
 
-// Generate CIGAR when the alignment end points are known
-uint32_t *bwa_gen_cigar2(const int8_t mat[25], int o_del, int e_del, int o_ins, int e_ins, int w_, int64_t l_pac, const uint8_t *pac, int l_query, uint8_t *query, int64_t rb, int64_t re, int *score, int *n_cigar, int *NM)
+// After DP, rseq runs in forward-reference order on both strands (the reverse
+// strand's A/C/G/T codes are still complemented). Restore ambiguous bases as
+// uppercase ASCII for NM/MD only; do not feed them back into alignment scoring.
+static void bwa_restore_ambiguities(const bntseq_t *bns, int64_t rb, int64_t re, uint8_t *rseq)
+{
+    int64_t beg = rb < bns->l_pac? rb : (bns->l_pac<<1) - re;
+    int64_t end = beg + re - rb;
+    int left = 0, right = bns->n_holes;
+    // Find the first ambiguity interval whose end lies beyond beg.
+    while (left < right) {
+        int mid = left + (right - left) / 2;
+        const bntamb1_t *p = &bns->ambs[mid];
+        if (p->offset + p->len <= beg) left = mid + 1;
+        else right = mid;
+    }
+    for (int i = left; i < bns->n_holes && bns->ambs[i].offset < end; ++i) {
+        const bntamb1_t *p = &bns->ambs[i];
+        int64_t from = p->offset > beg? p->offset : beg;
+        int64_t to = p->offset + p->len < end? p->offset + p->len : end;
+        memset(rseq + from - beg, toupper((unsigned char)p->amb), to - from);
+    }
+}
+
+// Generate CIGAR when the alignment end points are known. The packed reference
+// determines the alignment; its ambiguity annotations determine the NM/MD tags.
+uint32_t *bwa_gen_cigar2(const int8_t mat[25], int o_del, int e_del, int o_ins, int e_ins, int w_, const bntseq_t *bns, const uint8_t *pac, int l_query, uint8_t *query, int64_t rb, int64_t re, int *score, int *n_cigar, int *NM)
 {
     uint32_t *cigar = 0;
     uint8_t tmp, *rseq;
     int i;
-    int64_t rlen;
+    int64_t rlen, l_pac = bns->l_pac;
     kstring_t str;
     const char *int2base;
 
@@ -308,6 +333,7 @@ uint32_t *bwa_gen_cigar2(const int8_t mat[25], int o_del, int e_del, int o_ins, 
     }
     if (NM && n_cigar) {// compute NM and MD
         int k, x, y, u, n_mm = 0, n_gap = 0;
+        bwa_restore_ambiguities(bns, rb, re, rseq);
         str.l = str.m = *n_cigar * 4; str.s = (char*)cigar; // append MD to CIGAR
         int2base = rb < l_pac? "ACGTN" : "TGCAN";
         for (k = 0, x = y = u = 0; k < *n_cigar; ++k) {
@@ -318,7 +344,7 @@ uint32_t *bwa_gen_cigar2(const int8_t mat[25], int o_del, int e_del, int o_ins, 
                 for (i = 0; i < len; ++i) {
                     if (query[x + i] != rseq[y + i]) {
                         kputw(u, &str);
-                        kputc(int2base[rseq[y+i]], &str);
+                        kputc(rseq[y+i] < 4? int2base[rseq[y+i]] : rseq[y+i], &str);
                         ++n_mm; u = 0;
                     } else ++u;
                 }
@@ -327,7 +353,7 @@ uint32_t *bwa_gen_cigar2(const int8_t mat[25], int o_del, int e_del, int o_ins, 
                 if (k > 0 && k < *n_cigar - 1) { // don't do the following if D is the first or the last CIGAR
                     kputw(u, &str); kputc('^', &str);
                     for (i = 0; i < len; ++i)
-                        kputc(int2base[rseq[y+i]], &str);
+                        kputc(rseq[y+i] < 4? int2base[rseq[y+i]] : rseq[y+i], &str);
                     u = 0; n_gap += len;
                 }
                 y += len;
@@ -346,9 +372,9 @@ ret_gen_cigar:
     return cigar;
 }
 
-uint32_t *bwa_gen_cigar(const int8_t mat[25], int q, int r, int w_, int64_t l_pac, const uint8_t *pac, int l_query, uint8_t *query, int64_t rb, int64_t re, int *score, int *n_cigar, int *NM)
+uint32_t *bwa_gen_cigar(const int8_t mat[25], int q, int r, int w_, const bntseq_t *bns, const uint8_t *pac, int l_query, uint8_t *query, int64_t rb, int64_t re, int *score, int *n_cigar, int *NM)
 {
-    return bwa_gen_cigar2(mat, q, r, q, r, w_, l_pac, pac, l_query, query, rb, re, score, n_cigar, NM);
+    return bwa_gen_cigar2(mat, q, r, q, r, w_, bns, pac, l_query, query, rb, re, score, n_cigar, NM);
 }
 
 /*********************
